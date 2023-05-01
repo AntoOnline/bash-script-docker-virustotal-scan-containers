@@ -90,7 +90,6 @@ No malicious or suspicious file found in portainer.tar.
 ## Limitations
 
 Currently, only `EXPORT_TYPE=container` is fully supported. Image uploads are possible, but the status always remains "queued".
-```
 
 ## Want to connect?
 
