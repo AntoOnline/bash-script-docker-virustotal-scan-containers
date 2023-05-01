@@ -1,4 +1,5 @@
 #!/bin/bash
+
 # Script to backup docker images and containers and scan them with VirusTotal
 #
 # Currently only EXPORT_TYPE=container is supported. Image uploads but the status always remains "queued".
@@ -65,13 +66,13 @@ backup_docker_item() {
         local container_id=$(docker create "$item_id")
 
         echo "Docker export container $container_id (from image $item_id) to ${BASE_FOLDER}${item_id_safe}.tar"
-        docker export "$container_id" > "${BASE_FOLDER}${item_id_safe}.tar"
+        docker export "$container_id" > "${BASE_FOLDER}${item_id_safe}.tar" 2>/dev/null
 
         echo "Removing temporary container $container_id"
-        docker rm "$container_id"
+        docker rm "$container_id" > /dev/null 2>&1
     elif [ "$EXPORT_TYPE" = "container" ]; then
         echo "Docker save container $item_id to ${BASE_FOLDER}${item_id_safe}.tar"
-        docker export "$item_id" > "${BASE_FOLDER}${item_id_safe}.tar"
+        docker export "$item_id" > "${BASE_FOLDER}${item_id_safe}.tar" 2>/dev/null
     fi
 }
 
@@ -139,6 +140,9 @@ if ! command -v docker &> /dev/null; then
   exit 1
 fi
 
+# Starting script
+printf "\n\nStarting the container/image backup and scans.\n\n"
+
 # Delete and recreate the BASE_FOLDER
 rm -rf "$BASE_FOLDER"
 mkdir -p "$BASE_FOLDER"
@@ -175,7 +179,7 @@ else
       if docker image inspect "$item_id" > /dev/null 2>&1; then
           echo "Image $item_id exists."
       else
-          echo "Image $item_id not found. Skipping export."
+          echo "Image $item_id not found. Skipping export.\n\n"
           continue
       fi
     fi
@@ -188,7 +192,7 @@ fi
 for tar_file in "${BASE_FOLDER}"*.tar; do
     # check if the file is larger than xMB for the public api, if so, skip it
     if [[ $(stat -c%s "$tar_file") -gt $MAX_FILE_SIZE_TO_SCAN ]]; then
-        echo "Skipping and removing $tar_file as it is larger than $MAX_FILE_SIZE_TO_SCAN bytes."
+        echo "Skipping and removing $tar_file as it is larger than $MAX_FILE_SIZE_TO_SCAN bytes.\n\n"
         rm "$tar_file"
         continue
     fi
@@ -228,19 +232,21 @@ for tar_file in "${BASE_FOLDER}"*.tar; do
     retries=0
     while [ "$retries" -lt "$MAX_RETRIES" ]; do
         analysis=$(docker run --rm -v "${BASE_FOLDER}:/files" $VIRUS_TOTAL_DOCKER_IMAGE -k $VIRUS_TOTAL_API_KEY analysis $result_content)
+        printf "Store analysis result in file: %s\n" "$(basename "$analysis_file")"
         printf "%s\n" "$analysis" > "$analysis_file"
 
         if grep -q "status" "$analysis_file" && grep -q "completed" "$analysis_file"; then
             break
         else
-            printf "VirusTotal is still scanning. Retrying in $RETRY_INTERVAL seconds - %s/%s\n" "$retries" "$MAX_RETRIES"
-            sleep $RETRY_INTERVAL
+            backoff_time=$((2**retries * RETRY_INTERVAL))
+            printf "VirusTotal is still scanning. Retrying in $backoff_time seconds - %s/%s\n" "$retries" "$MAX_RETRIES"
+            sleep $backoff_time
             retries=$((retries + 1))
         fi
     done
 
     if [ "$retries" -eq "$MAX_RETRIES" ]; then
-        echo "Error: Reached the maximum number of retries. Skip."
+        echo "Error: Reached the maximum number of retries. Skip.\n\n"
         continue
     fi
 
