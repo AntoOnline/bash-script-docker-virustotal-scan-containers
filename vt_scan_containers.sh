@@ -187,12 +187,13 @@ else
     backup_docker_item "$EXPORT_TYPE" "$item_id" "$BASE_FOLDER" "$item_id_safe"
   done
 fi
+printf "\n\n"
 
 # Scan the exported tar files with VirusTotal
 for tar_file in "${BASE_FOLDER}"*.tar; do
     # check if the file is larger than xMB for the public api, if so, skip it
     if [[ $(stat -c%s "$tar_file") -gt $MAX_FILE_SIZE_TO_SCAN ]]; then
-        echo "Skipping and removing $tar_file as it is larger than $MAX_FILE_SIZE_TO_SCAN bytes.\n\n"
+        printf "Skipping and removing $tar_file as it is larger than $MAX_FILE_SIZE_TO_SCAN bytes.\n\n"
         rm "$tar_file"
         continue
     fi
@@ -215,9 +216,11 @@ for tar_file in "${BASE_FOLDER}"*.tar; do
     fi
     echo "$result" > $result_file
 done
+printf "\n\n"
 
 echo "Sleeping for $SLEEP_TIME_AFTER_ALL_FILES_UPLOADED seconds to give VirusTotal time to scan the file."
 sleep $SLEEP_TIME_AFTER_ALL_FILES_UPLOADED
+printf "\n\n"
 
 # Scan the exported tar files with VirusTotal
 for tar_file in "${BASE_FOLDER}"*.tar; do
@@ -236,6 +239,7 @@ for tar_file in "${BASE_FOLDER}"*.tar; do
         printf "%s\n" "$analysis" > "$analysis_file"
 
         if grep -q "status" "$analysis_file" && grep -q "completed" "$analysis_file"; then
+            printf "VirusTotal gave a status of completed. - %s/%s\n" "$retries" "$MAX_RETRIES"
             break
         else
             backoff_time=$((2**retries * RETRY_INTERVAL))
@@ -271,3 +275,4 @@ for tar_file in "${BASE_FOLDER}"*.tar; do
 
     fi
 done
+
