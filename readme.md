@@ -87,10 +87,6 @@ Analyzing result file: portainer.tar.result
 No malicious or suspicious file found in portainer.tar.
 ```
 
-## Limitations
-
-Currently, only `EXPORT_TYPE=container` is fully supported. Image uploads are possible, but the status always remains "queued".
-
 ## Want to connect?
 
 Feel free to contact me on [Twitter](https://twitter.com/OnlineAnto), [DEV Community](https://dev.to/antoonline/) or [LinkedIn](https://www.linkedin.com/in/anto-online) if you have any questions or suggestions.
