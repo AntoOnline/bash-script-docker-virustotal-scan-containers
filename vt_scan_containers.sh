@@ -263,16 +263,18 @@ for tar_file in "${BASE_FOLDER}"*.tar; do
     fi
 
     # Check for malicious or suspicious results and send a Slack notification or print the result
-    if ! (grep -q "malicious: 0" "$analysis_file" && grep -q "suspicious: 0" "$analysis_file"); then
+    malicious_detected=$(grep "malicious" "$analysis_file" | awk '{print $2}')
+    suspicious_detected=$(grep "suspicious" "$analysis_file" | awk '{print $2}')
+
+    if [ "$malicious_detected" -gt 0 ] || [ "$suspicious_detected" -gt 0 ]; then
         slack_message="$VIRUS_FOUND Possible malicious or suspicious file in:\n\`\`\`$(cat "$analysis_file")\`\`\`"
         printf "%s\n" "$slack_message"
         send_slack_notification $SLACK_WEB_HOOK "${slack_message}"
         printf "\n"
-
     else
         printf "$NO_VIRUS_FOUND No malicious or suspicious file found in %s.\n" "$tar_file_name"
         printf "\n"
-
     fi
+
 done
 
