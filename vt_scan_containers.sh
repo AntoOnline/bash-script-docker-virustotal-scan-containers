@@ -8,7 +8,7 @@
 # 1) Use this code at your own risk.
 # 2) The file is uploaded to VirusTotal for analysis. Please read Virus Total's terms of service before using this script.
 #
-# Visit http://anto.online for more information or give a like on GitHub: https://github.com/yourusername/yourrepository
+# Visit http://anto.online for more information or give a like on GitHub: https://github.com/AntoOnline/bash-script-docker-virustotal-scan-containers
 #
 
 # Docker image to use for VirusTotal scanning
