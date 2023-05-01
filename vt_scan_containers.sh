@@ -219,6 +219,7 @@ sleep $SLEEP_TIME_AFTER_ALL_FILES_UPLOADED
 for tar_file in "${BASE_FOLDER}"*.tar; do
     tar_file_name=$(basename "${tar_file}")
     result_file="${tar_file}.result"
+    analysis_file="${result_file}.analysis"
 
     # Loop until the text 'status: "completed"' is found in the result file
     printf "Analyzing result file: %s\n" "$(basename "$result_file")"
