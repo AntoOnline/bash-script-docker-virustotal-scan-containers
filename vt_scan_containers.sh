@@ -178,6 +178,8 @@ else
   printf "Exporting all containers (running and stopped):\n${item_ids} \n"
 fi
 
+item_ids="cincan/virustotal"
+
 for item_id in $item_ids; do
   # check if the item id is not empty
   item_id_safe=$(sanitize_item_id "$item_id")
@@ -206,8 +208,9 @@ for tar_file in "${OUTPUT_FOLDER}"*.tar; do
 
     # Perform VirusTotal scan
     printf -- "- Upload tar file to VirusTotal for scanning: %s\n" "$tar_file_name"
-    result=$(docker run --rm -v "${OUTPUT_FOLDER}:/files" $VIRUS_TOTAL_DOCKER_IMAGE -k $VIRUS_TOTAL_API_KEY scan file "/files/${tar_file_name}")
-    echo "$result" >> "${OUTPUT_FOLDER}commands.log"
+    command="docker run --rm -v '${OUTPUT_FOLDER}:/files' $VIRUS_TOTAL_DOCKER_IMAGE -k $VIRUS_TOTAL_API_KEY scan file '/files/${tar_file_name}'"
+    result=$(eval "$command")
+    echo "$command" >> "${OUTPUT_FOLDER}commands.log"
     printf -- "- Received result: %s\n\n" "${result}"
 
     # Check if the result contains one space and two words, if not, exit the script and send a Slack notification
@@ -237,8 +240,9 @@ for tar_file in "${OUTPUT_FOLDER}"*.tar; do
     completed=false
     retries=0
     while [ "$retries" -lt "$MAX_RETRIES" ] && [ "$completed" = false ]; do
-        analysis=$(docker run --rm -v "${OUTPUT_FOLDER}:/files" $VIRUS_TOTAL_DOCKER_IMAGE -k $VIRUS_TOTAL_API_KEY analysis $result_content)
-        echo "$analysis" >> "${OUTPUT_FOLDER}commands.log"
+        command_analysis="docker run --rm -v '${OUTPUT_FOLDER}:/files' $VIRUS_TOTAL_DOCKER_IMAGE -k $VIRUS_TOTAL_API_KEY analysis $result_content"
+        analysis=$(eval "$command_analysis")
+        echo "$command_analysis" >> "${OUTPUT_FOLDER}commands.log"
         printf -- "- Store analysis result in file: %s\n" "$(basename "$analysis_file")"
         printf "%s\n" "$analysis" > "$analysis_file"
 
