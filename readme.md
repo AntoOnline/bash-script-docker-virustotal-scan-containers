@@ -20,13 +20,13 @@ To use this script, you will need a VirusTotal API key. Follow these steps to ob
 ## Usage
 
 ```bash
-./vt_scan_containers.sh --BASE_FOLDER=PATH --VIRUS_TOTAL_API_KEY=KEY --EXPORT_TYPE=[image/container] [--SLACK_WEB_HOOK=URL] [--DEBUG]
+./vt_scan_containers.sh --OUTPUT_FOLDER=PATH --VIRUS_TOTAL_API_KEY=KEY --EXPORT_TYPE=[image/container] [--SLACK_WEB_HOOK=URL]
 ```
 
 Example:
 
 ```
-./vt_scan_containers.sh --BASE_FOLDER=/mnt/container_backups/ --VIRUS_TOTAL_API_KEY=e4c0f729f84EXAMPLE539a280000000 --EXPORT_TYPE=container --SLACK_WEB_HOOK=https://hooks.slack.com/services/example/example/example
+./vt_scan_containers.sh --OUTPUT_FOLDER=/mnt/container_backups/ --VIRUS_TOTAL_API_KEY=e4c0f729f84EXAMPLE539a280000000 --EXPORT_TYPE=container --SLACK_WEB_HOOK=https://hooks.slack.com/services/example/example/example
 ```
 
 ### Options
@@ -35,12 +35,12 @@ Example:
 - `--VIRUS_TOTAL_API_KEY`: Your VirusTotal API key.
 - `--EXPORT_TYPE`: Export type can be either `image` or `container`.
 - `--SLACK_WEB_HOOK` (Optional): Slack webhook URL to send notifications.
-- `--DEBUG` (Optional): Run the script in debug mode. This will only do one container/image as a test run.
 
 ## Dependencies
 
 - Docker
 - cincan/virustotal Docker image
+- cURL (for sending Slack notifications)
 
 Make sure you have Docker installed and the `cincan/virustotal` Docker image available.
 
@@ -56,35 +56,40 @@ Make sure you have Docker installed and the `cincan/virustotal` Docker image ava
 Example console output:
 
 ```
-Docker save container dcl to /mnt/container_backups/dcl.tar
-Docker save container portainer to /mnt/container_backups/portainer.tar
-Upload tar file to VirusTotal for scanning: dcl.tar
-Received result: /files/dcl.tar YmVlMDliODFjMjkwZDk1MmQ5YTk3Nj==
-Upload tar file to VirusTotal for scanning: portainer.tar
-Received result: /files/portainer.tar MzhlMjM0ZDY1NTA2N2IxNjkwM==
-Sleeping for 1 minute to give VirusTotal time to scan the file.
-Analyzing result file: dcl.tar.result
-VirusTotal is still scanning. Retrying in 10 seconds - 0/30
-VirusTotal is still scanning. Retrying in 10 seconds - 1/30
-VirusTotal is still scanning. Retrying in 10 seconds - 2/30
-VirusTotal is still scanning. Retrying in 10 seconds - 3/30
-VirusTotal is still scanning. Retrying in 10 seconds - 4/30
-VirusTotal is still scanning. Retrying in 10 seconds - 5/30
-VirusTotal is still scanning. Retrying in 10 seconds - 6/30
-VirusTotal is still scanning. Retrying in 10 seconds - 7/30
-VirusTotal is still scanning. Retrying in 10 seconds - 8/30
-VirusTotal is still scanning. Retrying in 10 seconds - 9/30
-VirusTotal is still scanning. Retrying in 10 seconds - 10/30
-VirusTotal is still scanning. Retrying in 10 seconds - 11/30
-VirusTotal is still scanning. Retrying in 10 seconds - 12/30
-VirusTotal is still scanning. Retrying in 10 seconds - 13/30
-VirusTotal is still scanning. Retrying in 10 seconds - 14/30
-VirusTotal is still scanning. Retrying in 10 seconds - 15/30
-VirusTotal is still scanning. Retrying in 10 seconds - 16/30
-VirusTotal is still scanning. Retrying in 10 seconds - 17/30
-No malicious or suspicious file found in dcl.tar.
-Analyzing result file: portainer.tar.result
-No malicious or suspicious file found in portainer.tar.
+Starting the container/image backup and scans.
+
+Create the OUTPUT_FOLDER: /mnt/container_backups/
+
+Delete all files in the OUTPUT_FOLDER that does not contain .virus
+
+Exporting all containers (running and stopped):
+nifty_goodall
+
+nifty_goodall:
+- Docker save container nifty_goodall to /mnt/container_backups/nifty_goodall.tar
+
+Finished exporting all images/containers.
+
+Scanning tar file: /mnt/container_backups/nifty_goodall.tar
+- Upload tar file to VirusTotal for scanning: nifty_goodall.tar
+- Received result: /files/nifty_goodall.tar NTNlMTU3ZDQzNDAwYTkzZjEzNjAzZjA4ODY3MWRhZWU6MTY4MzAyNzkxOA==
+
+Sleeping for 30 seconds to give VirusTotal time to scan the file.
+
+Analyzing result file: nifty_goodall.tar.result
+- Store analysis result in file: nifty_goodall.tar.result.analysis
+- VirusTotal is still scanning. Retrying in 15 seconds - 0/16
+- Store analysis result in file: nifty_goodall.tar.result.analysis
+- VirusTotal is still scanning. Retrying in 30 seconds - 1/16
+- Store analysis result in file: nifty_goodall.tar.result.analysis
+- VirusTotal is still scanning. Retrying in 60 seconds - 2/16
+- Store analysis result in file: nifty_goodall.tar.result.analysis
+- VirusTotal is still scanning. Retrying in 120 seconds - 3/16
+- Store analysis result in file: nifty_goodall.tar.result.analysis
+- VirusTotal is still scanning. Retrying in 240 seconds - 4/16
+- Store analysis result in file: nifty_goodall.tar.result.analysis
+- VirusTotal gave a status of completed. - 5/16
+☣ Possible malicious or suspicious file in: /files/nifty_goodall.tar NTNlMTU3ZDQzNDAwYTkzZjEzNjAzZjA4ODY3MWRhZWU6MTY4MzAyNzkxOA==
 ```
 
 ## Want to connect?

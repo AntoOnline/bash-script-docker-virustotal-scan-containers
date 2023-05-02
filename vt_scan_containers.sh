@@ -1,5 +1,5 @@
 #!/bin/bash
-
+#
 # Script to backup docker images and containers and scan them with VirusTotal
 #
 # Currently only EXPORT_TYPE=container is supported. Image uploads but the status always remains "queued".
@@ -22,10 +22,10 @@ MAX_FILE_SIZE_TO_SCAN=629145600
 MAX_RETRIES=16
 
 # Number of seconds to wait between retries
-RETRY_INTERVAL=15
+RETRY_INTERVAL=60
 
 # Sleep seconds after uploading all files to VirusTotal
-SLEEP_TIME_AFTER_ALL_FILES_UPLOADED=30
+SLEEP_TIME_AFTER_ALL_FILES_UPLOADED=180
 
 # Emojis
 VIRUS_FOUND=$(echo -e "\U2623")
@@ -33,7 +33,7 @@ NO_VIRUS_FOUND=$(echo -e "\U2714")
 
 # Function to print usage instructions
 print_usage() {
-  echo "Usage: $0 --BASE_FOLDER=PATH --VIRUS_TOTAL_API_KEY=KEY --EXPORT_TYPE=[image/container] [--SLACK_WEB_HOOK=URL] [--DEBUG]"
+  echo "Usage: $0 --OUTPUT_FOLDER=PATH --VIRUS_TOTAL_API_KEY=KEY --EXPORT_TYPE=[image/container] [--SLACK_WEB_HOOK=URL]"
   exit 1
 }
 
@@ -55,24 +55,34 @@ sanitize_item_id() {
 backup_docker_item() {
     local EXPORT_TYPE="$1"
     local item_id="$2"
-    local BASE_FOLDER="$3"
+    local OUTPUT_FOLDER="$3"
     local item_id_safe="$4"
 
     if [ "$EXPORT_TYPE" = "image" ]; then
-        # Images somehow always return resource not found when using docker save - this is a workaround
-        # instead of: docker save "$item_id" > "${BASE_FOLDER}${item_id_safe}.tar"
-        # The docker create command initializes a container based on the specified image, but it doesn't start the container or run any processes in it.
-        echo "Creating a temporary container from image $item_id"
-        local container_id=$(docker create "$item_id")
+        printf "\n$item_id:\n"
 
-        echo "Docker export container $container_id (from image $item_id) to ${BASE_FOLDER}${item_id_safe}.tar"
-        docker export "$container_id" > "${BASE_FOLDER}${item_id_safe}.tar" 2>/dev/null
+        command_create="docker create '$item_id'"
+        printf -- "- Creating a temporary container from image %s\n" "$item_id"
+        local container_id=$(eval "$command_create")
+        echo "$command_create" >> "${OUTPUT_FOLDER}commands.log"
 
-        echo "Removing temporary container $container_id"
-        docker rm "$container_id" > /dev/null 2>&1
+        command_export="docker export '$container_id' > '${OUTPUT_FOLDER}${item_id_safe}.tar'"
+        printf -- "- Docker export container %s (from image %s) to %s%s.tar\n" "$container_id" "$item_id" "$OUTPUT_FOLDER" "$item_id_safe"
+        eval "$command_export" 2>/dev/null
+        echo "$command_export" >> "${OUTPUT_FOLDER}commands.log"
+
+        command_rm="docker rm '$container_id'"
+        printf -- "- Removing temporary container %s\n" "$container_id"
+        eval "$command_rm" > /dev/null 2>&1
+        echo "$command_rm" >> "${OUTPUT_FOLDER}commands.log"
+
     elif [ "$EXPORT_TYPE" = "container" ]; then
-        echo "Docker save container $item_id to ${BASE_FOLDER}${item_id_safe}.tar"
-        docker export "$item_id" > "${BASE_FOLDER}${item_id_safe}.tar" 2>/dev/null
+        printf "\n$item_id:\n"
+
+        command_export="docker export '$item_id' > '${OUTPUT_FOLDER}${item_id_safe}.tar'"
+        printf -- "- Docker save container %s to %s%s.tar\n" "$item_id" "$OUTPUT_FOLDER" "$item_id_safe"
+        eval "$command_export" 2>/dev/null
+        echo "$command_export" >> "${OUTPUT_FOLDER}commands.log"
     fi
 }
 
@@ -89,8 +99,8 @@ send_slack_notification() {
 # Parse arguments
 for arg in "$@"; do
   case $arg in
-    --BASE_FOLDER=*)
-      BASE_FOLDER="${arg#*=}"
+    --OUTPUT_FOLDER=*)
+      OUTPUT_FOLDER="${arg#*=}"
       shift
       ;;
     --VIRUS_TOTAL_API_KEY=*)
@@ -105,18 +115,14 @@ for arg in "$@"; do
       SLACK_WEB_HOOK="${arg#*=}"
       shift
       ;;
-    --DEBUG)
-      DEBUG=true
-      shift
-      ;;
     *)
       print_usage
       ;;
   esac
 done
 
-# Check if BASE_FOLDER and VIRUS_TOTAL_API_KEY are provided
-if [[ -z "$BASE_FOLDER" || -z "$VIRUS_TOTAL_API_KEY" || -z "$EXPORT_TYPE" ]]; then
+# Check if OUTPUT_FOLDER and VIRUS_TOTAL_API_KEY are provided
+if [[ -z "$OUTPUT_FOLDER" || -z "$VIRUS_TOTAL_API_KEY" || -z "$EXPORT_TYPE" ]]; then
   print_usage
 fi
 
@@ -126,13 +132,10 @@ if [[ "$EXPORT_TYPE" != "image" && "$EXPORT_TYPE" != "container" ]]; then
   exit 1
 fi
 
-# Make sure BASE_FOLDER ends with a slash
-if [[ "$BASE_FOLDER" != */ ]]; then
-  BASE_FOLDER="${BASE_FOLDER}/"
+# Make sure OUTPUT_FOLDER ends with a slash
+if [[ "$OUTPUT_FOLDER" != */ ]]; then
+  OUTPUT_FOLDER="${OUTPUT_FOLDER}/"
 fi
-
-# Set DEBUG to false if not provided
-DEBUG=${DEBUG:-false}
 
 # Check if Docker is installed
 if ! command -v docker &> /dev/null; then
@@ -143,10 +146,20 @@ fi
 # Starting script
 printf "\n\nStarting the container/image backup and scans.\n\n"
 
-# Delete and recreate the BASE_FOLDER
-rm -rf "$BASE_FOLDER"
-mkdir -p "$BASE_FOLDER"
-chmod 555 -R "$BASE_FOLDER"
+# Delete and recreate the OUTPUT_FOLDER
+printf "Create the OUTPUT_FOLDER: $OUTPUT_FOLDER\n\n"
+
+# Create the OUTPUT_FOLDER if it does not exist
+if [ ! -d "$OUTPUT_FOLDER" ]; then
+  mkdir -p "$OUTPUT_FOLDER"
+fi
+
+# Set permissions to 555
+chmod 555 -R "$OUTPUT_FOLDER"
+
+# Delete all files in the OUTPUT_FOLDER that does not contain .virus
+printf "Delete all files in the OUTPUT_FOLDER that does not contain .virus\n\n"
+find "$OUTPUT_FOLDER" -type f ! -name "*.virus" -delete
 
 # Export image or container
 format_string="{{.Names}}"
@@ -157,43 +170,32 @@ elif [ "$EXPORT_TYPE" = "container" ]; then
     format_string="{{.Names}}"
 fi
 
-if [ "$DEBUG" = true ]; then
-  if [ "$EXPORT_TYPE" = "image" ]; then
-    item_id=$(docker ps --format "$format_string" | xargs docker inspect --format '{{.Image}}' | sort -u | head -n 1)
-  else
-    item_id=$(docker ps --format "$format_string" | head -n 1)
-  fi
-  item_id_safe=$(sanitize_item_id "$item_id")
-  backup_docker_item "$EXPORT_TYPE" "$item_id" "$BASE_FOLDER" "$item_id_safe"
+if [ "$EXPORT_TYPE" = "image" ]; then
+  item_ids=$(docker images --format "{{.Repository}}:{{.Tag}}" | sort -u)
+  printf "Exporting all images:\n${item_ids}\n"
 else
-  if [ "$EXPORT_TYPE" = "image" ]; then
-    item_ids=$(docker ps --format "$format_string" | xargs docker inspect --format '{{.Image}}' | sort -u)
-  else
-    item_ids=$(docker ps --format "$format_string" | sort -u)
-  fi
-
-  for item_id in $item_ids; do
-    item_id_safe=$(sanitize_item_id "$item_id")
-
-    if [ "$EXPORT_TYPE" = "image" ]; then
-      if docker image inspect "$item_id" > /dev/null 2>&1; then
-          echo "Image $item_id exists."
-      else
-          echo "Image $item_id not found. Skipping export.\n\n"
-          continue
-      fi
-    fi
-
-    backup_docker_item "$EXPORT_TYPE" "$item_id" "$BASE_FOLDER" "$item_id_safe"
-  done
+  item_ids=$(docker ps -a --format "$format_string" | sort -u)
+  printf "Exporting all containers (running and stopped):\n${item_ids} \n"
 fi
-printf "\n\n"
+
+for item_id in $item_ids; do
+  # check if the item id is not empty
+  item_id_safe=$(sanitize_item_id "$item_id")
+  if [[ -n "$item_id" ]]; then
+    backup_docker_item "$EXPORT_TYPE" "$item_id" "$OUTPUT_FOLDER" "$item_id_safe"
+    continue
+  fi
+done
+
+printf "\nFinished exporting all images/containers.\n\n"
 
 # Scan the exported tar files with VirusTotal
-for tar_file in "${BASE_FOLDER}"*.tar; do
+for tar_file in "${OUTPUT_FOLDER}"*.tar; do
+    printf "Scanning tar file: $tar_file\n"
+
     # check if the file is larger than xMB for the public api, if so, skip it
     if [[ $(stat -c%s "$tar_file") -gt $MAX_FILE_SIZE_TO_SCAN ]]; then
-        printf "Skipping and removing $tar_file as it is larger than $MAX_FILE_SIZE_TO_SCAN bytes.\n\n"
+        printf "- Skipping and removing %s as it is larger than %d bytes.\n\n" "$tar_file" "$MAX_FILE_SIZE_TO_SCAN"
         rm "$tar_file"
         continue
     fi
@@ -203,9 +205,10 @@ for tar_file in "${BASE_FOLDER}"*.tar; do
     analysis_file="${result_file}.analysis"
 
     # Perform VirusTotal scan
-    echo "Upload tar file to VirusTotal for scanning: $tar_file_name"
-    result=$(docker run --rm -v "${BASE_FOLDER}:/files" $VIRUS_TOTAL_DOCKER_IMAGE -k $VIRUS_TOTAL_API_KEY scan file "/files/${tar_file_name}")
-    echo "Received result: ${result}"
+    printf -- "- Upload tar file to VirusTotal for scanning: %s\n" "$tar_file_name"
+    result=$(docker run --rm -v "${OUTPUT_FOLDER}:/files" $VIRUS_TOTAL_DOCKER_IMAGE -k $VIRUS_TOTAL_API_KEY scan file "/files/${tar_file_name}")
+    echo "$result" >> "${OUTPUT_FOLDER}commands.log"
+    printf -- "- Received result: %s\n\n" "${result}"
 
     # Check if the result contains one space and two words, if not, exit the script and send a Slack notification
     if [[ $(echo "$result" | wc -w) -ne 2 ]]; then
@@ -216,14 +219,13 @@ for tar_file in "${BASE_FOLDER}"*.tar; do
     fi
     echo "$result" > $result_file
 done
-printf "\n\n"
 
 echo "Sleeping for $SLEEP_TIME_AFTER_ALL_FILES_UPLOADED seconds to give VirusTotal time to scan the file."
 sleep $SLEEP_TIME_AFTER_ALL_FILES_UPLOADED
-printf "\n\n"
+printf "\n"
 
 # Scan the exported tar files with VirusTotal
-for tar_file in "${BASE_FOLDER}"*.tar; do
+for tar_file in "${OUTPUT_FOLDER}"*.tar; do
     tar_file_name=$(basename "${tar_file}")
     result_file="${tar_file}.result"
     analysis_file="${result_file}.analysis"
@@ -232,25 +234,27 @@ for tar_file in "${BASE_FOLDER}"*.tar; do
     printf "Analyzing result file: %s\n" "$(basename "$result_file")"
     result_content=$(cat "$result_file" | tr -d '\r')
 
+    completed=false
     retries=0
-    while [ "$retries" -lt "$MAX_RETRIES" ]; do
-        analysis=$(docker run --rm -v "${BASE_FOLDER}:/files" $VIRUS_TOTAL_DOCKER_IMAGE -k $VIRUS_TOTAL_API_KEY analysis $result_content)
-        printf "Store analysis result in file: %s\n" "$(basename "$analysis_file")"
+    while [ "$retries" -lt "$MAX_RETRIES" ] && [ "$completed" = false ]; do
+        analysis=$(docker run --rm -v "${OUTPUT_FOLDER}:/files" $VIRUS_TOTAL_DOCKER_IMAGE -k $VIRUS_TOTAL_API_KEY analysis $result_content)
+        echo "$analysis" >> "${OUTPUT_FOLDER}commands.log"
+        printf -- "- Store analysis result in file: %s\n" "$(basename "$analysis_file")"
         printf "%s\n" "$analysis" > "$analysis_file"
 
         if grep -q "status" "$analysis_file" && grep -q "completed" "$analysis_file"; then
-            printf "VirusTotal gave a status of completed. - %s/%s\n" "$retries" "$MAX_RETRIES"
-            break
+            printf -- "- VirusTotal gave a status of completed. - %s/%s\n" "$retries" "$MAX_RETRIES"
+            completed=true
         else
             backoff_time=$((2**retries * RETRY_INTERVAL))
-            printf "VirusTotal is still scanning. Retrying in $backoff_time seconds - %s/%s\n" "$retries" "$MAX_RETRIES"
+            printf -- "- VirusTotal is still scanning. Retrying in $backoff_time seconds - %s/%s\n" "$retries" "$MAX_RETRIES"
             sleep $backoff_time
             retries=$((retries + 1))
         fi
     done
 
     if [ "$retries" -eq "$MAX_RETRIES" ]; then
-        echo "Error: Reached the maximum number of retries. Skip.\n\n"
+        echo "-- Error: Reached the maximum number of retries. Skip.\n\n"
         continue
     fi
 
@@ -263,18 +267,18 @@ for tar_file in "${BASE_FOLDER}"*.tar; do
     fi
 
     # Check for malicious or suspicious results and send a Slack notification or print the result
-    malicious_detected=$(grep "malicious" "$analysis_file" | awk '{print $2}')
-    suspicious_detected=$(grep "suspicious" "$analysis_file" | awk '{print $2}')
+    malicious_or_suspicious_detected=$(grep -E 'category: "malicious"|category: "suspicious"' "$analysis_file")
 
-    if [ "$malicious_detected" -gt 0 ] || [ "$suspicious_detected" -gt 0 ]; then
-        slack_message="$VIRUS_FOUND Possible malicious or suspicious file in:\n\`\`\`$(cat "$analysis_file")\`\`\`"
-        printf "%s\n" "$slack_message"
-        send_slack_notification $SLACK_WEB_HOOK "${slack_message}"
-        printf "\n"
+    if [ -n "$malicious_or_suspicious_detected" ]; then
+      slack_message="Possible malicious or suspicious file in: ${result_content}"
+      echo -e "$VIRUS_FOUND ${slack_message}\n"
+      send_slack_notification $SLACK_WEB_HOOK "${slack_message}"
+
+      # Rename the tar file to indicate that it contains a virus
+      mv "$analysis_file" "${analysis_file}.virus"
     else
-        printf "$NO_VIRUS_FOUND No malicious or suspicious file found in %s.\n" "$tar_file_name"
-        printf "\n"
+        printf "%s No malicious or suspicious file found in %s.\n\n" "$NO_VIRUS_FOUND" "$tar_file_name"
     fi
-
 done
+
 
