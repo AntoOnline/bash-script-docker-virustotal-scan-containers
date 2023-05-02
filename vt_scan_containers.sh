@@ -198,7 +198,7 @@ for tar_file in "${OUTPUT_FOLDER}"*.tar; do
 
     # check if the file is larger than xMB for the public api, if so, skip it
     if [[ $(stat -c%s "$tar_file") -gt $MAX_FILE_SIZE_TO_SCAN ]]; then
-        printf "- Skipping and removing %s as it is larger than %d bytes.\n\n" "$tar_file" "$MAX_FILE_SIZE_TO_SCAN"
+        printf -- "- Skipping and removing %s as it is larger than %d bytes.\n\n" "$tar_file" "$MAX_FILE_SIZE_TO_SCAN"
         rm "$tar_file"
         continue
     fi
@@ -259,7 +259,7 @@ for tar_file in "${OUTPUT_FOLDER}"*.tar; do
     done
 
     if [ "$retries" -eq "$MAX_RETRIES" ]; then
-        echo "-- Error: Reached the maximum number of retries. Skip.\n\n"
+        echo -- "- Error: Reached the maximum number of retries. Skip.\n\n"
         continue
     fi
 
