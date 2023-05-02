@@ -178,7 +178,8 @@ else
   printf "Exporting all containers (running and stopped):\n${item_ids} \n"
 fi
 
-item_ids="cincan/virustotal"
+# Use to debug a single image/container
+#item_ids="cincan/virustotal"
 
 for item_id in $item_ids; do
   # check if the item id is not empty
